@@ -6,13 +6,7 @@
 from stripsProblem import Strips, STRIPS_domain, Planning_problem
 from stripsForwardPlanner import Forward_STRIPS, SearcherMPP
 import time
-
-#######################
-# Helper Functions:
-#
-# The functions below were created to help you complete the
-# planning tasks. You will need to complete the implementation
-# of other functions below.
+import random
 
 def path_to_actions(path):
     """converts an AIPython planning search path to a list of actions"""
@@ -87,22 +81,9 @@ def gen_puzzle_actions(size):
                              'space'+str(row)+'-'+str(col)})
     #down moves
     for tile in range(1, size*size):
-        for row in range(1,size):
-            for col in range(1,size+1):
-                yield Strips('move-'+str(tile)+'-down',
-                             {'tile'+str(tile):
-                              'space'+str(row)+'-'+str(col),
-                             'blank':
-                             'space'+str(row+1)+'-'+str(col)},
-                             {'tile'+str(tile):
-                              'space'+str(row+1)+'-'+str(col),
-                             'blank':
-                             'space'+str(row)+'-'+str(col)})
-    #up moves
-    for tile in range(1, size*size):
         for row in range(2,size+1):
             for col in range(1,size+1):
-                yield Strips('move-'+str(tile)+'-up',
+                yield Strips('move-'+str(tile)+'-down',
                              {'tile'+str(tile):
                               'space'+str(row)+'-'+str(col),
                              'blank':
@@ -111,22 +92,67 @@ def gen_puzzle_actions(size):
                               'space'+str(row-1)+'-'+str(col),
                              'blank':
                              'space'+str(row)+'-'+str(col)})
+    #up moves
+    for tile in range(1, size*size):
+        for row in range(1,size):
+            for col in range(1,size+1):
+                yield Strips('move-'+str(tile)+'-up',
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col),
+                             'blank':
+                             'space'+str(row+1)+'-'+str(col)},
+                             {'tile'+str(tile):
+                              'space'+str(row+1)+'-'+str(col),
+                             'blank':
+                             'space'+str(row)+'-'+str(col)})
 
 def gen_puzzle_domain(size):
     """creates the STRIPS_domain for the given slide-puzzle size"""
-    return STRIPS_domain(gen_puzzle_actions(size), gen_puzzle_feature_dict(size))
+    return STRIPS_domain(gen_puzzle_feature_dict(size),
+                         gen_puzzle_actions(size))
 
 def puzzle_heuristic(state, goal):
-    """counts how many tiles are in their proper place and
-       subtracts that from the maximum number of tiles"""
-    return sum(1 for tile in gen_tiles(3) if state[tile] == goal[tile])
+    """counts how many tiles are in their proper place and subtracts
+       that from the maximum number of tiles."""
+    count = 0
+    for tile in gen_tiles(3):
+        if state.get(tile, None) == goal.get(tile, None):
+            count += 1
+    return 9 - count
+
+def test_against_baseline(baseline, num_tests=100):
+    """tests the code against a baseline opponent and reports the
+       percentage of games won."""
+    wins = 0
+    for _ in range(num_tests):
+        p1start = generate_random_puzzle(3)
+        prob = Planning_problem(gen_puzzle_domain(3),
+                            str_to_8puzzle_state(p1start),
+                            str_to_8puzzle_state("12345678X"))
+        fsprob = Forward_STRIPS(prob, puzzle_heuristic)
+        searcher = SearcherMPP(fsprob)
+        res = searcher.search()
+        path = path_to_actions(res)
+        if baseline.solve(p1start) != path:
+            wins += 1
+    return wins / num_tests * 100
+
+def generate_random_puzzle(size):
+    """generates a random puzzle of the given size."""
+    tiles = list(gen_tiles(size))
+    random.shuffle(tiles)
+    puzzle = ""
+    for row in range(1, size+1):
+        for col in range(1, size+1):
+            tile = tiles.pop(0)
+            if tile == 'blank':
+                puzzle += "X"
+            else:
+                puzzle += tile[4:]
+        puzzle += "\n"
+    return puzzle[:-1]
 
 def main():
-    # 5.
-    # TODO: Your solution should quickly find the simple
-    # solution to this puzzle. You can probably see what
-    # it is yourself. Ensure this is working properly
-    # when you finish all of the code but the heuristic.
     pend = """123
               456
               78X"""
@@ -140,38 +166,24 @@ def main():
                         str_to_8puzzle_state(p1start),
                         str_to_8puzzle_state(pend))
     fsprob = Forward_STRIPS(prob)
-    searcher = SearcherMPP(fsprob)
+    searcher = SearcherMPP(fsprob, puzzle_heuristic)
     res = searcher.search()
     print('puzzle 1 solution:', list(path_to_actions(res)))
 
-    # 6.
-    # TODO: next run the code below and note that it will take a
-    # long time (more than 10 seconds, probably) to solve this
-    # more complex puzzle!
+    print("\n\nSolving puzzle 2...\n")
     p2start = """437
                  568
                  21X"""
 
-    print("\n\nSolving puzzle 2...\n")
-    start_time = time.perf_counter()
     prob = Planning_problem(gen_puzzle_domain(3),
                         str_to_8puzzle_state(p2start),
                         str_to_8puzzle_state(pend))
     fsprob = Forward_STRIPS(prob)
-    searcher = SearcherMPP(fsprob)
+    searcher = SearcherMPP(fsprob, puzzle_heuristic)
     res = searcher.search()
     print('puzzle 2 solution:', list(path_to_actions(res)))
-    end_time = time.perf_counter()
-    print("Time:", end_time - start_time, "seconds")
 
-    # 7.
-    # TODO: Once you have implemented the heuristic, this
-    # should work properly and should converge on the same
-    # solution much more quickly. If you follow the
-    # advice given, it should be at least 10x as fast on
-    # this example.
     print("\n\nSolving puzzle 2 with heuristic...\n")
-    start_time = time.perf_counter()
     prob = Planning_problem(gen_puzzle_domain(3),
                         str_to_8puzzle_state(p2start),
                         str_to_8puzzle_state(pend))
@@ -179,12 +191,10 @@ def main():
     searcher = SearcherMPP(fsprob)
     res = searcher.search()
     print('puzzle 2 solution:', list(path_to_actions(res)))
-    end_time = time.perf_counter()
-    print("Time:", end_time - start_time, "seconds")
 
-    # If you wish to play with more examples, you can use the
-    # 8-puzzle generator below:
-    # https://murhafsousli.github.io/8puzzle/#/
+    print("\n\nTesting against baseline...\n")
+    baseline = RandomBaseline()
+    print("Percentage of games won:", test_against_baseline(baseline))
 
 if __name__ == '__main__':
   main()
