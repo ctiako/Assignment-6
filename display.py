@@ -3,80 +3,188 @@
 # By Cyrille Tekam Tiako
 # 15 Sep 2024
 
-# display.py - A simple way to trace the intermediate steps of algorithms.
-# AIFCA Python3 code Version 0.9.4 Documentation at http://aipython.org
-# Download the zip file and read aipython.pdf for documentation
+from stripsProblem import Strips, STRIPS_domain, Planning_problem
+from stripsForwardPlanner import Forward_STRIPS, SearcherMPP
+import time
 
-# Artificial Intelligence: Foundations of Computational Agents http://artint.info
-# Copyright David L Poole and Alan K Mackworth 2017-2022.
-# This work is licensed under a Creative Commons
-# Attribution-NonCommercial-ShareAlike 4.0 International License.
-# See: http://creativecommons.org/licenses/by-nc-sa/4.0/deed.en
+#######################
+# Helper Functions:
+#
+# The functions below were created to help you complete the
+# planning tasks. You will need to complete the implementation
+# of other functions below.
 
-class Displayable:
-    """
-    A class for controlled display of algorithm messages based on verbosity levels.
-    The `max_display_level` attribute controls the detail of output.
-    """
+def path_to_actions(path):
+    """converts an AIPython planning search path to a list of actions"""
+    if path.arc:
+        yield path.arc.action
+        yield from path_to_actions(path.initial)
 
-    max_display_level = 1  # Default display level, can be changed in subclasses
+def gen_tiles(size):
+    """generates the names for tiles in the slide-puzzle search
+       space in the format tileX where X is the number on the
+       tile. 'blank' is also generated for the absent tile."""
+    for i in range(1, size*size):
+        yield 'tile'+str(i)
+    yield 'blank'
 
-    def display(self, level, *args, **kwargs):
-        """
-        Prints messages if the specified `level` is less than or equal to `max_display_level`.
-        
-        Parameters:
-        - level: An integer specifying the importance or verbosity level of the message.
-        - *args: Positional arguments to be passed to the print function.
-        - **kwargs: Keyword arguments passed to the print function.
-        """
-        if level <= self.max_display_level:
-            print(*args, **kwargs)  # Python 3 print statement
+def gen_puzzle_feature_dict(size):
+    """generates the feature dictionary needed by STRIPS_domain"""
+    spaces = set(gen_spaces(size))
+    return { t : spaces for t in gen_tiles(size)}
 
+def str_to_8puzzle_state(s):
+    """converts a 3x3 string in to an 8puzzle search state.
+       Whitespace is trimmed off of each line and X stands in
+       for the blank space (no number tile)."""
+    row = 0
+    state = dict()
+    for line in s.strip().split("\n"):
+        row += 1
+        col = 0
+        line = line.strip()
+        for c in line:
+            col += 1
+            state['blank' if c=='X' else 'tile'+c] = \
+                          'space'+str(row)+'-'+str(col)
+    return state
 
-def visualize(func):
-    """
-    A decorator for adding interactive visualization (if required).
-    Currently, it just returns the function as-is. 
-    
-    Placeholder for possible future visualization logic.
-    """
-    return func
+def gen_spaces(size):
+    """generates names of the spaces on the slide puzzle. These
+       names represent 2-d coordinates on the square puzzle and
+       have the format spaceX-Y where X is the row and Y is the
+       column. """
+    for row in range(1, size+1):
+        for col in range(1, size+1):
+            yield 'space'+str(row)+'-'+str(col)
 
+def gen_puzzle_actions(size):
+    #right moves
+    for tile in range(1, size*size):
+        for row in range(1,size+1):
+            for col in range(1,size):
+                yield Strips('move-'+str(tile)+'-right',
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col),
+                             'blank':
+                             'space'+str(row)+'-'+str(col+1)},
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col+1),
+                             'blank':
+                             'space'+str(row)+'-'+str(col)})
+    #left moves
+    for tile in range(1, size*size):
+        for row in range(1,size+1):
+            for col in range(2,size+1):
+                yield Strips('move-'+str(tile)+'-left',
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col),
+                             'blank':
+                             'space'+str(row)+'-'+str(col-1)},
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col-1),
+                             'blank':
+                             'space'+str(row)+'-'+str(col)})
+    #down moves
+    for tile in range(1, size*size):
+        for row in range(1,size):
+            for col in range(1,size+1):
+                yield Strips('move-'+str(tile)+'-down',
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col),
+                             'blank':
+                             'space'+str(row+1)+'-'+str(col)},
+                             {'tile'+str(tile):
+                              'space'+str(row+1)+'-'+str(col),
+                             'blank':
+                             'space'+str(row)+'-'+str(col)})
+    #up moves
+    for tile in range(1, size*size):
+        for row in range(2,size+1):
+            for col in range(1,size+1):
+                yield Strips('move-'+str(tile)+'-up',
+                             {'tile'+str(tile):
+                              'space'+str(row)+'-'+str(col),
+                             'blank':
+                             'space'+str(row-1)+'-'+str(col)},
+                             {'tile'+str(tile):
+                              'space'+str(row-1)+'-'+str(col),
+                             'blank':
+                             'space'+str(row)+'-'+str(col)})
 
-# Example subclass demonstrating how to use the Displayable class
-class ExampleAlgorithm(Displayable):
-    """
-    An example class showing how the `Displayable` class can be used in an algorithm.
-    """
+def gen_puzzle_domain(size):
+    """creates the STRIPS_domain for the given slide-puzzle size"""
+    return STRIPS_domain(gen_puzzle_actions(size), gen_puzzle_feature_dict(size))
 
-    max_display_level = 2  # Set verbosity level for this example
+def puzzle_heuristic(state, goal):
+    """counts how many tiles are in their proper place and
+       subtracts that from the maximum number of tiles"""
+    return sum(1 for tile in gen_tiles(3) if state[tile] == goal[tile])
 
-    def step1(self):
-        self.display(1, "Step 1: Initializing the algorithm.")
-        # Code for step 1...
+def main():
+    # 5.
+    # TODO: Your solution should quickly find the simple
+    # solution to this puzzle. You can probably see what
+    # it is yourself. Ensure this is working properly
+    # when you finish all of the code but the heuristic.
+    pend = """123
+              456
+              78X"""
 
-    def step2(self):
-        self.display(2, "Step 2: Executing detailed computations.")
-        # Code for step 2...
+    print("\n\nSolving puzzle 1...\n")
+    p1start = """123
+                 X56
+                 478"""
 
-    def step3(self):
-        self.display(3, "Step 3: This message appears only if max_display_level >= 3.")
-        # Code for step 3...
+    prob = Planning_problem(gen_puzzle_domain(3),
+                        str_to_8puzzle_state(p1start),
+                        str_to_8puzzle_state(pend))
+    fsprob = Forward_STRIPS(prob)
+    searcher = SearcherMPP(fsprob)
+    res = searcher.search()
+    print('puzzle 1 solution:', list(path_to_actions(res)))
 
-    @visualize  # Decorator applied to the main execution
-    def run(self):
-        """
-        Runs the algorithm, displaying steps based on verbosity level.
-        """
-        self.step1()
-        self.step2()
-        self.step3()
+    # 6.
+    # TODO: next run the code below and note that it will take a
+    # long time (more than 10 seconds, probably) to solve this
+    # more complex puzzle!
+    p2start = """437
+                 568
+                 21X"""
 
+    print("\n\nSolving puzzle 2...\n")
+    start_time = time.perf_counter()
+    prob = Planning_problem(gen_puzzle_domain(3),
+                        str_to_8puzzle_state(p2start),
+                        str_to_8puzzle_state(pend))
+    fsprob = Forward_STRIPS(prob)
+    searcher = SearcherMPP(fsprob)
+    res = searcher.search()
+    print('puzzle 2 solution:', list(path_to_actions(res)))
+    end_time = time.perf_counter()
+    print("Time:", end_time - start_time, "seconds")
 
-# Usage example:
-if __name__ == "__main__":
-    algorithm = ExampleAlgorithm()
-    algorithm.run()
+    # 7.
+    # TODO: Once you have implemented the heuristic, this
+    # should work properly and should converge on the same
+    # solution much more quickly. If you follow the
+    # advice given, it should be at least 10x as fast on
+    # this example.
+    print("\n\nSolving puzzle 2 with heuristic...\n")
+    start_time = time.perf_counter()
+    prob = Planning_problem(gen_puzzle_domain(3),
+                        str_to_8puzzle_state(p2start),
+                        str_to_8puzzle_state(pend))
+    fsprob = Forward_STRIPS(prob, puzzle_heuristic)
+    searcher = SearcherMPP(fsprob)
+    res = searcher.search()
+    print('puzzle 2 solution:', list(path_to_actions(res)))
+    end_time = time.perf_counter()
+    print("Time:", end_time - start_time, "seconds")
 
+    # If you wish to play with more examples, you can use the
+    # 8-puzzle generator below:
+    # https://murhafsousli.github.io/8puzzle/#/
 
+if __name__ == '__main__':
+  main()
