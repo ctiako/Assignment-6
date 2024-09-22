@@ -6,7 +6,7 @@
 import random
 import time
 from stripsProblem import Strips, STRIPS_domain, Planning_problem
-from stripsForwardPlanner import Forward_STRIPS, SearcherMPP
+from stripsForwardPlanner import Forward_STRIPS, SearcherMPP, AStarSearch
 
 class RandomBaseline:
     """A baseline class that solves the puzzle randomly."""
@@ -36,15 +36,10 @@ def gen_puzzle_feature_dict(size):
 
 def str_to_8puzzle_state(s):
     """Converts a string representation of a puzzle to a state dictionary."""
-    row = 0
     state = dict()
-    for line in s.strip().split("\n"):
-        row += 1
-        col = 0
-        line = line.strip()
-        for c in line:
-            col += 1
-            state['blank' if c == 'X' else 'tile'+c] = 'space'+str(row)+'-'+str(col)
+    for row, line in enumerate(s.strip().split("\n"), 1):
+        for col, c in enumerate(line.strip(), 1):
+            state['blank' if c == 'X' else 'tile'+c] = f'space{row}-{col}'
     return state
 
 def gen_spaces(size):
@@ -104,7 +99,7 @@ def test_against_baseline(baseline, num_tests=100):
                                 str_to_8puzzle_state(p1start),
                                 str_to_8puzzle_state("12345678X"))
         fsprob = Forward_STRIPS(prob, manhattan_heuristic)
-        searcher = SearcherMPP(fsprob)
+        searcher = AStarSearch(fsprob)  # Switching to A* for better performance
         res = searcher.search()
         path = list(path_to_actions(res))
         if baseline.solve(p1start) != path:
@@ -142,7 +137,7 @@ def main():
                             str_to_8puzzle_state(p1start),
                             str_to_8puzzle_state(pend))
     fsprob = Forward_STRIPS(prob)
-    searcher = SearcherMPP(fsprob, manhattan_heuristic)
+    searcher = AStarSearch(fsprob, manhattan_heuristic)  # Using A* search with heuristic
     res = searcher.search()
     print('puzzle 1 solution:', list(path_to_actions(res)))
 
@@ -156,7 +151,7 @@ def main():
                             str_to_8puzzle_state(p2start),
                             str_to_8puzzle_state(pend))
     fsprob = Forward_STRIPS(prob)
-    searcher = SearcherMPP(fsprob, manhattan_heuristic)
+    searcher = AStarSearch(fsprob, manhattan_heuristic)
     res = searcher.search()
     print('puzzle 2 solution:', list(path_to_actions(res)))
 
@@ -168,8 +163,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
 
 #Expected Output Example:
     
@@ -190,3 +183,4 @@ Percentage of games won: 95.0
 #Performance Analysis: Comparison between the STRIPS planner with the Manhattan heuristic and the random baseline. Discuss how often the STRIPS planner outperforms the baseline.
 #Heuristic Justification: Explanation of why the Manhattan heuristic is more effective than simple tile mismatch counting.
 #Lessons Learned: Insights into AI planning, optimization, and puzzle solving through the STRIPS framework.
+
